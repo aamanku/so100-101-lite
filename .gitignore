@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+build/
+dist/
+
+# Environments
+.venv/
+venv/
+env/
+.conda/
+
+# Local configuration and generated data
+.env
+*.log
+calibration/
+.cache/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+*~

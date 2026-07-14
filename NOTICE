@@ -1,0 +1,25 @@
+so100-101-lite
+
+Project integration, Torch-free packaging, ZMQ server, and GUI:
+Copyright 2026 Abhijeet Kulkarni.
+
+This repository includes selected and modified portions of Hugging Face LeRobot:
+https://github.com/huggingface/lerobot
+Copyright 2024-2026 The Hugging Face team and LeRobot contributors.
+Licensed under the Apache License, Version 2.0.
+
+The keyboard control examples are copied from XLeRobot:
+https://github.com/Vector-Wangel/XLeRobot
+Specifically:
+- software/examples/0_so100_keyboard_joint_control.py
+- software/examples/1_so100_keyboard_ee_control.py
+Licensed under the Apache License, Version 2.0.
+
+The local LeRobot copy has been reduced to the camera configuration, motor bus,
+Feetech, SO follower, keyboard teleoperator, and supporting utility modules needed
+by this repository. Torch-coupled policy, processor, dataset, training, simulation,
+and visualization code is not included. Some type-only imports and utility files
+were reduced to remove dependencies that are not used by the hardware controller.
+
+Original copyright and license headers are retained in copied source files. See
+LICENSE for the Apache License, Version 2.0.

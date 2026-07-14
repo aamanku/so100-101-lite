@@ -1,0 +1,9 @@
+name: so100_101_lite
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - tk
+  - pip:
+      - -r requirements.txt
