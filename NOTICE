@@ -2,6 +2,7 @@ so100-101-lite
 
 Project integration, Torch-free packaging, ZMQ server, and GUI:
 Copyright 2026 Abhijeet Kulkarni.
+Project: https://github.com/aamanku/so100-101-lite
 
 This repository includes selected and modified portions of Hugging Face LeRobot:
 https://github.com/huggingface/lerobot

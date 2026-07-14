@@ -36,7 +36,14 @@ This is an independent, unofficial project built from selected hardware code fro
 
 ## Installation
 
-From the repository root, create the Python 3.12 environment from the supplied dependency file:
+Clone the repository and enter its root:
+
+```bash
+git clone https://github.com/aamanku/so100-101-lite.git
+cd so100-101-lite
+```
+
+Create the Python 3.12 environment from the supplied dependency file:
 
 ```bash
 conda env create -f environment.yml
