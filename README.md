@@ -15,8 +15,9 @@ This is an independent, unofficial project built from selected hardware code fro
   - latched over-temperature, over-current, and serial-error faults;
   - emergency torque disable;
   - gripper torque and commands disabled by default.
-- Tk GUI with:
+- Tk GUIs with:
   - desired-position sliders;
+  - a single-slider heading client with piecewise-linear keypose interpolation;
   - live measured-position markers on every slider;
   - damping mode that sends measured positions back as desired positions;
   - position, target, smoothed goal, speed, load, voltage, temperature, current, movement, and status telemetry;
@@ -147,6 +148,28 @@ The GUI initially observes the robot without sending movement commands.
 
 Closing the GUI does not stop the server. If GUI commands disappear, the server watchdog transitions to hold.
 
+### Heading keypose client
+
+[`3_heading_zmq.py`](3_heading_zmq.py) is a smaller client with no telemetry table and one **shoulder pan** slider. The slider selects a complete joint pose from the user-editable `KEYPOSES` list near the top of the file.
+
+Before running it, replace the example poses with positions validated on your arm. Every keypose must contain the same joints, and `shoulder_pan` values must be strictly increasing:
+
+- the first keypose defines the minimum pan angle;
+- the last keypose defines the maximum pan angle;
+- with two keyposes, all joint positions are interpolated between those endpoints;
+- with three or more keyposes, interpolation is piecewise between the two adjacent keyposes around the desired pan angle;
+- omitted joints retain their existing server targets.
+
+The supplied examples set all non-pan arm joints to zero. Review them before enabling commands. Add `gripper` to every keypose only if the server is deliberately running with `--enable-gripper`.
+
+Start the robot server first, then run:
+
+```bash
+python 3_heading_zmq.py
+```
+
+The client observes the server without moving the arm until **Enable Pose Streaming** is clicked. It intersects the keypose pan range with the server's calibrated pan limits. **Stop / Hold**, connection loss, command rejection, closing the window, and the server watchdog stop the command stream; **EMERGENCY STOP** disables torque and latches a fault.
+
 ## Keyboard examples
 
 Only run one process that owns the serial port at a time.
@@ -237,7 +260,8 @@ ZMQ authentication and encryption are not configured. Do not expose the server t
 ├── 0_so100_keyboard_joint_control.py
 ├── 1_so100_keyboard_ee_control.py
 ├── 2_s100_keyboard_joint_control_zmq.py   # robot-side ZMQ server
-├── 21_gui.py                              # ZMQ GUI client
+├── 3_heading_zmq.py                       # one-slider keypose client
+├── 21_gui.py                              # full telemetry GUI client
 ├── .python-version                        # Python 3.12 for pyenv-compatible tools
 ├── lerobot/                               # copied minimal hardware subset
 ├── environment.yml                        # Miniforge/Python 3.12 environment
