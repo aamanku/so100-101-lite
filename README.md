@@ -150,17 +150,19 @@ Closing the GUI does not stop the server. If GUI commands disappear, the server 
 
 ### Heading keypose client
 
-[`3_heading_zmq.py`](3_heading_zmq.py) is a smaller client with no telemetry table and one **shoulder pan** slider. The slider selects a complete joint pose from the user-editable `KEYPOSES` list near the top of the file.
+[`3_heading_zmq.py`](3_heading_zmq.py) is a smaller client with no telemetry table and one **shoulder pan** slider. The slider directly sets only the desired pan target. Targets for the remaining joints come from the user-editable `KEYPOSES` list near the top of the file and are interpolated from the server's latest measured pan position.
 
 Before running it, replace the example poses with positions validated on your arm. Every keypose must contain the same joints, and `shoulder_pan` values must be strictly increasing:
 
 - the first keypose defines the minimum pan angle;
 - the last keypose defines the maximum pan angle;
-- with two keyposes, all joint positions are interpolated between those endpoints;
-- with three or more keyposes, interpolation is piecewise between the two adjacent keyposes around the desired pan angle;
+- with two keyposes, non-pan joint targets are interpolated between those endpoints as measured pan progresses;
+- with three or more keyposes, interpolation is piecewise between the two adjacent keyposes around the measured pan angle;
+- the desired slider value remains the pan target and is not used to advance the other joints;
+- if measured pan stops moving, the interpolated targets for the other joints stop advancing;
 - omitted joints retain their existing server targets.
 
-The supplied examples set all non-pan arm joints to zero. Review them before enabling commands. Add `gripper` to every keypose only if the server is deliberately running with `--enable-gripper`.
+The supplied examples command every non-gripper arm joint. Review and validate them before enabling commands. Add `gripper` to every keypose only if the server is deliberately running with `--enable-gripper`.
 
 Start the robot server first, then run:
 

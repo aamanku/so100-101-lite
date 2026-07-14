@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Single-slider keypose client for 2_s100_keyboard_joint_control_zmq.py.
 
-The shoulder-pan slider selects a piecewise-linear interpolation of KEYPOSES.
+The slider commands the desired shoulder-pan angle. The remaining joints use a
+piecewise-linear interpolation of KEYPOSES based on the latest measured pan, so
+they advance with the physical pan motion instead of jumping to the final pose.
 The first keypose has the minimum pan angle and the last has the maximum.
 """
 
@@ -23,30 +25,32 @@ import zmq
 #
 # Replace these examples with poses tested on your arm. Keyposes must have the
 # same joints and strictly increasing shoulder_pan values. With three or more
-# entries, interpolation is piecewise between adjacent keyposes. Omitted joints
-# retain their previous server target. Add "gripper" to every keypose only when
-# the server is intentionally started with --enable-gripper.
+# entries, interpolation is piecewise between adjacent keyposes. Non-pan joints
+# follow the measured pan progress; the slider value is used only as the pan
+# target. Omitted joints retain their previous server target. Add "gripper" to
+# every keypose only when the server is intentionally started with
+# --enable-gripper.
 KEYPOSES: list[dict[str, float]] = [
     {
-        "shoulder_pan": -90.0,
-        "shoulder_lift": 0.0,
-        "elbow_flex": 0.0,
-        "wrist_flex": 0.0,
-        "wrist_roll": 0.0,
+        "shoulder_pan": -110.0,
+        "shoulder_lift": -11.0,
+        "elbow_flex": 21.0,
+        "wrist_flex": 77.0,
+        "wrist_roll": 69.0,
     },
     {
         "shoulder_pan": 0.0,
-        "shoulder_lift": 0.0,
-        "elbow_flex": 0.0,
-        "wrist_flex": 0.0,
+        "shoulder_lift": -57.5,
+        "elbow_flex": 56.0,
+        "wrist_flex": 62.5,
         "wrist_roll": 0.0,
     },
     {
-        "shoulder_pan": 90.0,
-        "shoulder_lift": 0.0,
-        "elbow_flex": 0.0,
-        "wrist_flex": 0.0,
-        "wrist_roll": 0.0,
+        "shoulder_pan": 110.0,
+        "shoulder_lift": -11.0,
+        "elbow_flex": 21.0,
+        "wrist_flex": 77.0,
+        "wrist_roll": -69.0,
     },
 ]
 
@@ -77,10 +81,10 @@ def validate_keyposes(keyposes: list[dict[str, float]]) -> tuple[tuple[str, ...]
 
 
 def interpolate_keyposes(
-    keyposes: list[dict[str, float]], pan_values: tuple[float, ...], desired_pan: float
+    keyposes: list[dict[str, float]], pan_values: tuple[float, ...], pan_progress: float
 ) -> tuple[dict[str, float], int, float]:
-    """Return the piecewise-linear pose, left segment index, and interpolation fraction."""
-    pan = max(pan_values[0], min(pan_values[-1], float(desired_pan)))
+    """Interpolate a pose at the given measured pan progress."""
+    pan = max(pan_values[0], min(pan_values[-1], float(pan_progress)))
     if pan <= pan_values[0]:
         return {joint: float(value) for joint, value in keyposes[0].items()}, 0, 0.0
     if pan >= pan_values[-1]:
@@ -98,6 +102,18 @@ def interpolate_keyposes(
     return pose, left, fraction
 
 
+def command_from_pan_progress(
+    keyposes: list[dict[str, float]],
+    pan_values: tuple[float, ...],
+    desired_pan: float,
+    measured_pan: float,
+) -> dict[str, float]:
+    """Build a command whose pan is desired and whose other joints follow measured pan."""
+    pose, _, _ = interpolate_keyposes(keyposes, pan_values, measured_pan)
+    pose["shoulder_pan"] = max(pan_values[0], min(pan_values[-1], float(desired_pan)))
+    return pose
+
+
 class HeadingGUI:
     def __init__(self, root: tk.Tk, endpoint: str, poll_ms: int):
         self.root = root
@@ -108,13 +124,16 @@ class HeadingGUI:
         self.socket: zmq.Socket | None = None
         self.streaming = False
         self.connected = False
+        self.measured_pan: float | None = None
         self.effective_limits = (self.pan_values[0], self.pan_values[-1])
 
         self.pan_var = tk.DoubleVar(value=self.pan_values[0])
         self.pan_text = tk.StringVar(value=f"{self.pan_values[0]:.1f}°")
         self.status_var = tk.StringVar(value="Connecting…")
         self.detail_var = tk.StringVar(value=f"Server: {endpoint}")
-        self.segment_var = tk.StringVar(value="Waiting for server state…")
+        self.segment_var = tk.StringVar(
+            value="Non-pan joints interpolate from measured shoulder-pan progress."
+        )
 
         self.root.title("SO100/SO101 Heading Keyposes")
         self.root.geometry("760x285")
@@ -190,16 +209,7 @@ class HeadingGUI:
         ).pack(side=tk.RIGHT)
 
     def on_pan_changed(self, value: str) -> None:
-        pan = float(value)
-        self.pan_text.set(f"{pan:.1f}°")
-        self.update_segment_text(pan)
-
-    def update_segment_text(self, pan: float) -> None:
-        _, left, fraction = interpolate_keyposes(KEYPOSES, self.pan_values, pan)
-        self.segment_var.set(
-            f"Interpolating keypose {left + 1} → {left + 2}  |  "
-            f"{fraction * 100.0:.0f}% through segment"
-        )
+        self.pan_text.set(f"{float(value):.1f}°")
 
     def rpc(self, request: dict[str, Any]) -> dict[str, Any] | None:
         assert self.socket is not None
@@ -211,8 +221,13 @@ class HeadingGUI:
             return None
 
     def poll(self) -> None:
-        if self.streaming and self.connected:
-            pose, _, _ = interpolate_keyposes(KEYPOSES, self.pan_values, self.pan_var.get())
+        if self.streaming and self.connected and self.measured_pan is not None:
+            pose = command_from_pan_progress(
+                KEYPOSES,
+                self.pan_values,
+                desired_pan=self.pan_var.get(),
+                measured_pan=self.measured_pan,
+            )
             request: dict[str, Any] = {"type": "set_targets", "positions": pose}
         else:
             request = {"type": "get_state"}
@@ -241,6 +256,13 @@ class HeadingGUI:
         fault = state.get("fault")
         limits = state.get("limits") or {}
         pan_limits = limits.get("shoulder_pan")
+        measured_pan = (state.get("joints") or {}).get("shoulder_pan", {}).get("position")
+        if (
+            not isinstance(measured_pan, bool)
+            and isinstance(measured_pan, (int, float))
+            and math.isfinite(float(measured_pan))
+        ):
+            self.measured_pan = float(measured_pan)
 
         if isinstance(pan_limits, list) and len(pan_limits) == 2:
             low = max(self.pan_values[0], float(pan_limits[0]))
@@ -258,7 +280,6 @@ class HeadingGUI:
             bounded = max(low, min(high, self.pan_var.get()))
             self.pan_var.set(bounded)
             self.pan_text.set(f"{bounded:.1f}°")
-            self.update_segment_text(bounded)
 
         if fault:
             self.set_streaming(False)
@@ -270,7 +291,7 @@ class HeadingGUI:
             self.pan_scale.state(["!disabled"])
             self.stream_button.configure(state=tk.NORMAL)
             if self.streaming:
-                self.status_var.set("STREAMING INTERPOLATED KEYPOSES")
+                self.status_var.set("STREAMING — KEYPOSES FOLLOW MEASURED PAN PROGRESS")
                 self.status_label.configure(fg="#087f23")
             elif state.get("watchdog_active"):
                 self.status_var.set("CONNECTED — server is holding position")
@@ -297,15 +318,12 @@ class HeadingGUI:
 
         # On first connection, initialize the slider from measured pan without
         # issuing a motion command.
-        if not hasattr(self, "_initialized_pan"):
-            measured_pan = (state.get("joints") or {}).get("shoulder_pan", {}).get("position")
-            if measured_pan is not None:
-                low, high = self.effective_limits
-                initial = max(low, min(high, float(measured_pan)))
-                self.pan_var.set(initial)
-                self.pan_text.set(f"{initial:.1f}°")
-                self.update_segment_text(initial)
-                self._initialized_pan = True
+        if not hasattr(self, "_initialized_pan") and self.measured_pan is not None:
+            low, high = self.effective_limits
+            initial = max(low, min(high, self.measured_pan))
+            self.pan_var.set(initial)
+            self.pan_text.set(f"{initial:.1f}°")
+            self._initialized_pan = True
 
     def set_streaming(self, enabled: bool) -> None:
         self.streaming = enabled
